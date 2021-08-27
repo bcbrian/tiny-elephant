@@ -1,4 +1,19 @@
-.App {
+.app {
   font-family: sans-serif;
-  text-align: center;
+}
+
+.card-container {
+  margin: 12px;
+  padding: 12px;
+  border: 2px solid black;
+}
+.card {
+  margin: 12px;
+  padding: 12px;
+  border: 2px solid rebeccapurple;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
