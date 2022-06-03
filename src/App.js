@@ -1,54 +1,140 @@
 import { useEffect, useState } from "react";
 import "./styles.css";
 
-/**
- * keep track of guesses
- * flip cards over/hide values FLIP CARDS ANIMATION...
- *        animation is nonblock for timing game?
- * keep face up if matched/dont hide these
- * style
- * scale/levels easy medium hard
- * rand values/shuffling use math.rand and splice?
- * some ux options show the whole thing for a set amount of time
- * track how quick you do it?
- */
+function shuffle(array) {
+  array.sort(() => Math.random() - 0.5);
+  return array;
+}
+
+const APP_STATE_STAGES = {
+  START: "start",
+  PLAYING: "playing",
+  END: "end"
+};
+
+const DIFFICULTY = {
+  EASY: "EASY",
+  MEDIUM: "MEDIUM",
+  HARD: "HARD"
+};
+
+function getNumberOfRows(difficulty) {
+  switch (difficulty) {
+    case DIFFICULTY.HARD:
+      return 6;
+
+    case DIFFICULTY.MEDIUM:
+      return 4;
+
+    case DIFFICULTY.EASY:
+    default:
+      return 2;
+  }
+}
+
+function getPokemonNumber(indexToPokemonNumber, index) {
+  if (indexToPokemonNumber[index]) return indexToPokemonNumber[index];
+  while (!indexToPokemonNumber[index]) {
+    const pokemonNumber = Math.ceil(Math.random() * 151);
+    const alreadyUsed = indexToPokemonNumber.find(
+      (num) => num === pokemonNumber
+    );
+    if (!alreadyUsed) {
+      indexToPokemonNumber[index] = pokemonNumber;
+    }
+  }
+  return indexToPokemonNumber[index];
+}
+
+async function getCards(numberOfCards) {
+  const indexToPokemonNumber = [];
+  const pokedex = {};
+  const cards = await Promise.all(
+    Array(numberOfCards)
+      .fill(null)
+      .map(async (_, idx) => {
+        if (true) {
+          const index = Math.ceil((idx + 1) / 2);
+          const pokemonNumber = getPokemonNumber(indexToPokemonNumber, index);
+
+          const pokemon =
+            pokedex[`${pokemonNumber}`] ?? (await getPokemon(pokemonNumber));
+          pokedex[`${pokemonNumber}`] = pokemon;
+          return {
+            index,
+            pokemonNumber,
+            img: pokemon.sprites.front_default
+          };
+        }
+      })
+  );
+  return shuffle(cards);
+}
+
+async function getPokemon(number) {
+  const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${number}`);
+  return await response.json();
+}
+
 export default function App() {
-  const NUMBER_OF_CARDS = 4;
-  const cards = [1, 1, 2, 2];
+  const [appState, setAppState] = useState(null);
+
+  async function initState() {
+    setAppState({
+      stage: APP_STATE_STAGES.START,
+      numberOfRows: 6,
+      cards: await getCards(6 * 6),
+      correctGuesses: []
+    });
+  }
+
+  useEffect(() => {
+    initState();
+  }, []);
 
   const [firstGuess, setFirstGuess] = useState(null);
   const [secondGuess, setSecondGuess] = useState(null);
-  const [correctGuesses, setCorrectGuesses] = useState([]);
 
-  function handleCardClick(event) {
-    const cardElem = event.target;
-    console.log(cardElem.name);
-    const cardIndex = cardElem.name;
-    const cardValue = cards[cardIndex];
-    console.log(cardValue);
-    if (correctGuesses.includes(cardIndex)) {
-      console.log("you already know this :P");
-      return;
-    }
-    if (firstGuess === null) {
-      setFirstGuess({ cardIndex, cardValue });
-      return;
-    }
+  function getHandleStartGame(difficulty) {
+    return async function handleStartGame() {
+      const numberOfRows = getNumberOfRows(difficulty);
+      setAppState({
+        stage: APP_STATE_STAGES.PLAYING,
+        numberOfRows,
+        cards: await getCards(numberOfRows * numberOfRows),
+        correctGuesses: []
+      });
+    };
+  }
 
-    if (secondGuess === null && firstGuess.cardIndex !== cardIndex) {
-      setSecondGuess({ cardIndex, cardValue });
-      return;
-    }
+  function getHandleCardClick(cardIndex) {
+    return function handleCardClick(event) {
+      event.stopPropagation();
+      const cardValue = appState.cards[cardIndex].pokemonNumber;
+      if (appState.correctGuesses.includes(cardIndex)) {
+        console.log("you already know this :P");
+        return;
+      }
+      if (firstGuess === null) {
+        setFirstGuess({ cardIndex, cardValue });
+        return;
+      }
 
-    if (firstGuess.cardIndex === cardIndex) {
-      console.log("you already clicked this :P");
-      return;
-    }
+      if (secondGuess === null && firstGuess.cardIndex !== cardIndex) {
+        setSecondGuess({ cardIndex, cardValue });
+        return;
+      }
 
-    if (secondGuess.cardIndex === cardIndex) {
-      console.log("you already clicked this :P");
-      return;
-    }
+      if (firstGuess.cardIndex === cardIndex) {
+        console.log("you already clicked this :P");
+        return;
+      }
+
+      if (secondGuess.cardIndex === cardIndex) {
+        console.log("you already clicked this :P");
+        return;
+      }
+    };
   }
 
   useEffect(() => {
@@ -57,11 +143,14 @@ export default function App() {
       handle = setTimeout(() => {
         if (firstGuess.cardValue === secondGuess.cardValue) {
           console.log("you found a match :P");
-          setCorrectGuesses([
-            ...correctGuesses,
-            firstGuess.cardIndex,
-            secondGuess.cardIndex
-          ]);
+          setAppState({
+            ...appState,
+            correctGuesses: [
+              ...appState.correctGuesses,
+              firstGuess.cardIndex,
+              secondGuess.cardIndex
+            ]
+          });
         } else {
           console.log("you did not find a match :P");
         }
@@ -71,21 +160,89 @@ export default function App() {
     }
     return () => clearTimeout(handle);
   }, [firstGuess, secondGuess, setFirstGuess, setSecondGuess]);
+  useEffect(() => {
+    if (
+      appState?.cards &&
+      appState?.correctGuesses &&
+      appState?.cards.length === appState?.correctGuesses?.length
+    ) {
+      console.log("you won! BOOM! POP! Goes the DYNAMITE");
+      initState();
+    }
+  }, [appState]);
 
-  return (
+  const notPlaying = appState?.stage !== APP_STATE_STAGES.PLAYING;
+
+  return appState === null ? null : (
     <div className="app">
-      <h1>Tiny Elephant</h1>
-      <div className="card-container">
-        {cards.map((card, i) => (
-          <button key={i} className="card" onClick={handleCardClick} name={i}>
-            {i.toString() === firstGuess?.cardIndex ||
-            i.toString() === secondGuess?.cardIndex ||
-            correctGuesses.includes(i.toString())
-              ? card
-              : ""}
-          </button>
-        ))}
+      <h1 className="title">POKEMATCH</h1>
+
+      <div
+        className="card-container"
+        style={{
+          filter: notPlaying ? "blur(6px)" : "none"
+        }}
+      >
+        {appState?.cards?.map((card, i) => {
+          const isFlipped =
+            i === firstGuess?.cardIndex ||
+            i === secondGuess?.cardIndex ||
+            appState.correctGuesses.includes(i);
+          return (
+            <div
+              key={i}
+              className={`card ${isFlipped ? "is-flipped" : ""}`}
+              onClick={getHandleCardClick(i)}
+              style={{
+                margin: "12px",
+                flex: `0 0 calc(${100 / appState.numberOfRows}% - 24px)`,
+                paddingTop: `calc(${100 / appState.numberOfRows}% - 24px)`
+              }}
+            >
+              {/* <span className="card__value" onClick={getHandleCardClick(i)}>
+                {isFlipped ? card : ""}
+              </span> */}
+              <div
+                className="card__face card__face--front"
+                style={{
+                  top: 0
+                }}
+              ></div>
+              <div
+                className="card__face card__face--back"
+                style={{
+                  top: 0
+                }}
+              >
+                <img width="100%" src={card.img} alt="pokemon name goes here" />
+              </div>
+            </div>
+          );
+        })}
       </div>
+      {notPlaying ? (
+        <div className="app-modal">
+          <h2>Can you match'em all?</h2>
+          <button
+            className="app-modal__button app-modal__button--easy"
+            onClick={getHandleStartGame(DIFFICULTY.EASY)}
+          >
+            {DIFFICULTY.EASY}
+          </button>
+          <button
+            className="app-modal__button app-modal__button--medium"
+            onClick={getHandleStartGame(DIFFICULTY.MEDIUM)}
+          >
+            {DIFFICULTY.MEDIUM}
+          </button>
+          <button
+            className="app-modal__button app-modal__button--hard"
+            onClick={getHandleStartGame(DIFFICULTY.HARD)}
+          >
+            {DIFFICULTY.HARD}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
